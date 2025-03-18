@@ -14,7 +14,7 @@ import (
 /*
 	Projects
 
-- GetAll
+- GetAll ✅
 - GetByID
 - Creat
 - Update
@@ -36,17 +36,17 @@ type ProjectDTO struct {
 	Description string `json:"description"`
 }
 
-type RouteHandler struct {
+type Handler struct {
 	client *mongo.Client
 }
 
-func NewRouteHandler(client *mongo.Client) *RouteHandler {
-	return &RouteHandler{
+func NewHandler(client *mongo.Client) *Handler {
+	return &Handler{
 		client: client,
 	}
 }
 
-func (h *RouteHandler) GetAll(c *gin.Context) {
+func (h *Handler) GetAll(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, 10*time.Second)
 	defer cancel()
 	cfg, err := config.LoadConfig()

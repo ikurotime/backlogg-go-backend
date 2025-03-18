@@ -7,6 +7,10 @@ import (
 	"os"
 )
 
+type ClerkConfig struct {
+	ApiKey string `yaml:"apiKey"`
+}
+
 type MongoDBConfig struct {
 	Protocol string `yaml:"protocol"`
 	Port     string `yaml:"port"`
@@ -19,6 +23,7 @@ type MongoDBConfig struct {
 
 type Config struct {
 	MongoDBConfig MongoDBConfig `yaml:"mongodb"`
+	ClerkConfig   ClerkConfig   `yaml:"clerk"`
 }
 
 func LoadConfig() (*Config, error) {
