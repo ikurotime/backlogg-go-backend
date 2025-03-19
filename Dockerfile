@@ -25,6 +25,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 # Placing it here allows the previous steps to be cached across architectures.
 ARG TARGETARCH
 
+ENV APP_ENV=production
 # Build the application.
 # Leverage a cache mount to /go/pkg/mod/ to speed up subsequent builds.
 # Leverage a bind mount to the current directory to avoid having to copy the
