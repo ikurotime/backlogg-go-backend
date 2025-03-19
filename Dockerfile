@@ -61,13 +61,14 @@ COPY --from=build /app/server .
 # Copy config directory
 COPY --from=build /app/config /app/config
 
-# Create a simple script to handle environment files
-RUN echo '#!/bin/sh\n\
-if [ ! -f /app/config/.env.$APP_ENV ]; then \
-  echo "Warning: /app/config/.env.$APP_ENV not found"; \
+# Create entrypoint script - fixing the newline issue
+RUN printf '#!/bin/sh\n\
+if [ ! -f /app/config/.env.$APP_ENV ]; then\n\
+  echo "Warning: /app/config/.env.$APP_ENV not found"\n\
 fi\n\
-exec /app/server "$@"' > /app/entrypoint.sh && \
-chmod +x /app/entrypoint.sh
+exec /app/server "$@"\n' > /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh && \
+    cat /app/entrypoint.sh
 
 # Set ownership
 RUN chown -R appuser:appuser /app
