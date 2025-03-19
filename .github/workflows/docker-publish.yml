@@ -90,9 +90,6 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             APP_ENV=production
-          # Pass the config directory to the build context
-          secret-files: |
-            "env_file=config/.env.production"
 
       # Sign the resulting Docker image digest except on PRs.
       # This will only write to the public Rekor transparency log when the Docker
