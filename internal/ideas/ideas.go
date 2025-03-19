@@ -3,7 +3,9 @@ package ideas
 import (
 	"context"
 	"ikurotime/backlog-go-backend/config"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -42,6 +44,14 @@ type Comment struct {
 	Content   string    `bson:"content" json:"content"`
 	CreatedAt time.Time `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time `bson:"updated_at" json:"updated_at"`
+}
+
+// Bookmark represents a user's bookmark on an idea
+type Bookmark struct {
+	ID        bson.ObjectID `bson:"_id,omitempty"`
+	UserID    string        `bson:"user_id"`
+	IdeaID    bson.ObjectID `bson:"idea_id"`
+	CreatedAt time.Time     `bson:"created_at"`
 }
 
 // Handler handles idea-related HTTP requests
@@ -165,16 +175,33 @@ func (h *Handler) GetAll(c *gin.Context) {
 	}
 
 	// Execute query with pagination
-	skip := int64(0)
-	if page := c.Query("page"); page != "" {
-		// Parse page number and calculate skip
-		// Implementation depends on your pagination strategy
+	page := 1
+	pageSize := 20 // Default page size
+
+	if p := c.Query("page"); p != "" {
+		if parsedPage, err := strconv.Atoi(p); err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+	if size := c.Query("size"); size != "" {
+		if parsedSize, err := strconv.Atoi(size); err == nil && parsedSize > 0 && parsedSize <= 100 {
+			pageSize = parsedSize
+		}
+	}
+
+	skip := int64((page - 1) * pageSize)
+
+	// Get total count for pagination
+	total, err := collection.CountDocuments(ctx, filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count ideas"})
+		return
 	}
 
 	opts := options.Find().
 		SetSort(sort).
 		SetSkip(skip).
-		SetLimit(20) // Default page size
+		SetLimit(int64(pageSize))
 
 	cursor, err := collection.Find(ctx, filter, opts)
 	if err != nil {
@@ -189,7 +216,22 @@ func (h *Handler) GetAll(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": ideas})
+	// Calculate pagination metadata
+	totalPages := int(math.Ceil(float64(total) / float64(pageSize)))
+	hasNext := page < totalPages
+	hasPrev := page > 1
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": ideas,
+		"pagination": gin.H{
+			"current_page": page,
+			"page_size":    pageSize,
+			"total_items":  total,
+			"total_pages":  totalPages,
+			"has_next":     hasNext,
+			"has_prev":     hasPrev,
+		},
+	})
 }
 
 // LikeIdea handles liking an idea with transaction support
@@ -312,4 +354,169 @@ func (h *Handler) UnlikeIdea(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Idea unliked successfully"})
+}
+
+// BookmarkIdea handles bookmarking an idea
+func (h *Handler) BookmarkIdea(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c, 10*time.Second)
+	defer cancel()
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load config"})
+		return
+	}
+
+	userID := c.GetString("user_id")
+	ideaID, err := bson.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid idea ID"})
+		return
+	}
+
+	db := h.client.Database(cfg.MongoDBConfig.Database)
+	bookmarksColl := db.Collection("bookmarks")
+
+	exists, err := bookmarksColl.CountDocuments(ctx, bson.M{
+		"user_id": userID,
+		"idea_id": ideaID,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check bookmark"})
+		return
+	}
+	if exists > 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "Already bookmarked"})
+		return
+	}
+
+	_, err = bookmarksColl.InsertOne(ctx, Bookmark{
+		UserID:    userID,
+		IdeaID:    ideaID,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to bookmark idea"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Idea bookmarked successfully"})
+}
+
+// UnbookmarkIdea handles unbookmarking an idea
+func (h *Handler) UnbookmarkIdea(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c, 10*time.Second)
+	defer cancel()
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load config"})
+		return
+	}
+
+	userID := c.GetString("user_id")
+	ideaID, err := bson.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid idea ID"})
+		return
+	}
+
+	db := h.client.Database(cfg.MongoDBConfig.Database)
+	bookmarksColl := db.Collection("bookmarks")
+
+	result, err := bookmarksColl.DeleteOne(ctx, bson.M{
+		"user_id": userID,
+		"idea_id": ideaID,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unbookmark idea"})
+		return
+	}
+	if result.DeletedCount == 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "Bookmark not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Idea unbookmarked successfully"})
+}
+
+// GetBookmarkedIdeas retrieves bookmarked ideas for a user
+func (h *Handler) GetBookmarkedIdeas(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c, 10*time.Second)
+	defer cancel()
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load config"})
+		return
+	}
+
+	userID := c.GetString("user_id")
+	db := h.client.Database(cfg.MongoDBConfig.Database)
+
+	page := 1
+	pageSize := 20
+
+	if p := c.Query("page"); p != "" {
+		if parsedPage, err := strconv.Atoi(p); err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+	if size := c.Query("size"); size != "" {
+		if parsedSize, err := strconv.Atoi(size); err == nil && parsedSize > 0 && parsedSize <= 100 {
+			pageSize = parsedSize
+		}
+	}
+
+	skip := int64((page - 1) * pageSize)
+
+	pipeline := []bson.D{
+		{{Key: "$match", Value: bson.M{"user_id": userID}}},
+		{{Key: "$sort", Value: bson.M{"created_at": -1}}},
+		{{Key: "$skip", Value: skip}},
+		{{Key: "$limit", Value: pageSize}},
+		{{Key: "$lookup", Value: bson.M{
+			"from":         "ideas",
+			"localField":   "idea_id",
+			"foreignField": "_id",
+			"as":           "idea",
+		}}},
+		{{Key: "$unwind", Value: "$idea"}},
+		{{Key: "$replaceRoot", Value: bson.M{"newRoot": "$idea"}}},
+	}
+
+	cursor, err := db.Collection("bookmarks").Aggregate(ctx, pipeline)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch bookmarked ideas"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var ideas []Idea
+	if err := cursor.All(ctx, &ideas); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode ideas"})
+		return
+	}
+
+	total, err := db.Collection("bookmarks").CountDocuments(ctx, bson.M{"user_id": userID})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count bookmarks"})
+		return
+	}
+
+	totalPages := int(math.Ceil(float64(total) / float64(pageSize)))
+	hasNext := page < totalPages
+	hasPrev := page > 1
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": ideas,
+		"pagination": gin.H{
+			"current_page": page,
+			"page_size":    pageSize,
+			"total_items":  total,
+			"total_pages":  totalPages,
+			"has_next":     hasNext,
+			"has_prev":     hasPrev,
+		},
+	})
 }

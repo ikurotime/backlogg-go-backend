@@ -21,7 +21,13 @@ type MongoDBConfig struct {
 	DB       int    `yaml:"db"`
 }
 
+type Server struct {
+	Port          string `yaml:"port"`
+	AllowedOrigin string `yaml:"allowedOrigin"`
+}
+
 type Config struct {
+	Server        Server        `yaml:"server"`
 	MongoDBConfig MongoDBConfig `yaml:"mongodb"`
 	ClerkConfig   ClerkConfig   `yaml:"clerk"`
 }
