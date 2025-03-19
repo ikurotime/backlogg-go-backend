@@ -32,6 +32,17 @@ ENV APP_ENV=${APP_ENV}
 # Copy the source code and config files
 COPY . .
 
+# Create config directory explicitly
+RUN mkdir -p /src/config
+
+# If we're in CI, mount the environment file from secrets
+RUN --mount=type=secret,id=env_file,target=/src/config/.env.production,required=false \
+    if [ -f /src/config/.env.production ]; then \
+        echo "Using environment file from secret"; \
+    else \
+        echo "Note: No environment file provided from secret"; \
+    fi
+
 # Build the application.
 # Leverage a cache mount to /go/pkg/mod/ to speed up subsequent builds.
 RUN --mount=type=cache,target=/go/pkg/mod/ \
