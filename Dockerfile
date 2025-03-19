@@ -25,14 +25,17 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 # Placing it here allows the previous steps to be cached across architectures.
 ARG TARGETARCH
 
-ENV APP_ENV=production
+# Set default APP_ENV for build (can be overridden at build time)
+ARG APP_ENV=production
+ENV APP_ENV=${APP_ENV}
+
+# Copy the source code and config files
+COPY . .
+
 # Build the application.
 # Leverage a cache mount to /go/pkg/mod/ to speed up subsequent builds.
-# Leverage a bind mount to the current directory to avoid having to copy the
-# source code into the container.
 RUN --mount=type=cache,target=/go/pkg/mod/ \
-    --mount=type=bind,target=. \
-    CGO_ENABLED=0 GOARCH=$TARGETARCH go build -o /bin/server ./cmd
+    CGO_ENABLED=0 GOARCH=$TARGETARCH go build -o /bin/server ./cmd 
 
 ################################################################################
 # Create a new stage for running the application that contains the minimal
@@ -67,10 +70,24 @@ RUN adduser \
     --no-create-home \
     --uid "${UID}" \
     appuser
-USER appuser
+
+# Set up app environment and config
+ARG APP_ENV=production
+ENV APP_ENV=${APP_ENV}
+
+# Create application directory structure
+RUN mkdir -p /app/config
 
 # Copy the executable from the "build" stage.
 COPY --from=build /bin/server /bin/
+
+# Copy only the necessary configuration files
+COPY --from=build /src/config/.env.* /app/config/
+
+# Change ownership to non-root user
+RUN chown -R appuser:appuser /app
+
+USER appuser
 
 # Expose the port that the application listens on.
 EXPOSE 8080
