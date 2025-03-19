@@ -70,11 +70,21 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       
-      # Create environment file from secrets
-      - name: Create production environment file
+      # Create and validate environment file from secrets
+      - name: Create and validate production environment file
         run: |
           mkdir -p config
           echo "${{ secrets.ENV_PROD }}" > config/.env.production
+          # Install yq to validate YAML
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod a+x /usr/local/bin/yq
+          # Validate YAML format
+          if ! cat config/.env.production | yq > /dev/null; then
+            echo "ERROR: Invalid YAML format in environment file"
+            cat config/.env.production
+            exit 1
+          fi
+          echo "Environment file validated successfully"
       
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action

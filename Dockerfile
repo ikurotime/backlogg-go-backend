@@ -47,8 +47,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd
 # (e.g., alpine:3.17.2) or SHA (e.g., alpine@sha256:c41ab5c992deb4fe7e5da09f67a8804a46bd0592bfdf0b1847dde0e0889d2bff).
 FROM alpine:latest
 
-# Install CA certificates
-RUN apk --no-cache add ca-certificates tzdata
+# Install CA certificates and YAML tools
+RUN apk --no-cache add ca-certificates tzdata yq
 
 # Create a non-root user
 RUN adduser -D -g '' appuser
@@ -61,14 +61,23 @@ COPY --from=build /app/server .
 # Copy config directory
 COPY --from=build /app/config /app/config
 
-# Create entrypoint script - fixing the newline issue
+# Create entrypoint script with YAML validation
 RUN printf '#!/bin/sh\n\
-if [ ! -f /app/config/.env.$APP_ENV ]; then\n\
-  echo "Warning: /app/config/.env.$APP_ENV not found"\n\
+ENV_FILE="/app/config/.env.$APP_ENV"\n\
+if [ ! -f "$ENV_FILE" ]; then\n\
+  echo "ERROR: Environment file $ENV_FILE not found"\n\
+  exit 1\n\
 fi\n\
+# Validate YAML format\n\
+if ! cat "$ENV_FILE" | yq > /dev/null 2>&1; then\n\
+  echo "ERROR: Invalid YAML format in $ENV_FILE"\n\
+  echo "Content of $ENV_FILE:"\n\
+  cat "$ENV_FILE"\n\
+  exit 1\n\
+fi\n\
+echo "Using environment configuration: $ENV_FILE"\n\
 exec /app/server "$@"\n' > /app/entrypoint.sh && \
-    chmod +x /app/entrypoint.sh && \
-    cat /app/entrypoint.sh
+    chmod +x /app/entrypoint.sh
 
 # Set ownership
 RUN chown -R appuser:appuser /app
