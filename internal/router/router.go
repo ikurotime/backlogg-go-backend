@@ -1,6 +1,7 @@
 package router
 
 import (
+	"ikurotime/backlog-go-backend/internal/ideas"
 	"ikurotime/backlog-go-backend/internal/projects"
 	"log"
 	"net/http"
@@ -39,26 +40,27 @@ func (r *Router) setupPublicRoutes() {
 
 func (r *Router) setupProtectedRoutes() {
 	api := r.engine.Group("/api")
-	api.Use(r.clerkAuthMiddleware())
 	{
+		// Projects routes
 		projectsGroup := api.Group("/projects")
 		{
 			handler := projects.NewHandler(r.client)
-			projectsGroup.GET("", handler.GetAll)
+			projectsGroup.GET("", handler.GetAll) // Public route
+		}
+
+		// Ideas routes
+		ideasGroup := api.Group("/ideas")
+		{
+			handler := ideas.NewHandler(r.client)
+			ideasGroup.GET("", handler.GetAll) // Public route
+			ideasGroup.POST("/:id/like", r.requireAuth(), handler.LikeIdea)
+			ideasGroup.DELETE("/:id/like", r.requireAuth(), handler.UnlikeIdea)
 		}
 	}
 }
 
-func (r *Router) handleHealth() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "ok",
-			"service": "backlog-go-backend",
-		})
-	}
-}
-
-func (r *Router) clerkAuthMiddleware() gin.HandlerFunc {
+// requireAuth is a middleware that checks for authentication
+func (r *Router) requireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionToken := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
 		if sessionToken == "" {
@@ -96,6 +98,15 @@ func (r *Router) clerkAuthMiddleware() gin.HandlerFunc {
 		c.Set("user_email", usr.EmailAddresses[0].EmailAddress)
 
 		c.Next()
+	}
+}
+
+func (r *Router) handleHealth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ok",
+			"service": "backlog-go-backend",
+		})
 	}
 }
 
