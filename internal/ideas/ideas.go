@@ -2,6 +2,7 @@ package ideas
 
 import (
 	"context"
+	"fmt"
 	"ikurotime/backlog-go-backend/config"
 	"math"
 	"net/http"
@@ -26,6 +27,7 @@ type Idea struct {
 	AuthorID      string        `bson:"author_id" json:"author_id"`
 	LikesCount    int           `bson:"likes_count" json:"likes_count"`
 	CommentsCount int           `bson:"comments_count" json:"comments_count"`
+	Details       interface{}   `bson:"details,omitempty" json:"details,omitempty"`
 }
 
 // Like represents a user's like on an idea
@@ -231,6 +233,69 @@ func (h *Handler) GetAll(c *gin.Context) {
 			"has_next":     hasNext,
 			"has_prev":     hasPrev,
 		},
+	})
+}
+
+func (h *Handler) GetOne(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c, 10*time.Second)
+	defer cancel()
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load config"})
+		return
+	}
+	db := h.client.Database(cfg.MongoDBConfig.Database)
+	collection := db.Collection("ideas")
+	ideaID, err := bson.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid idea ID"})
+		return
+	}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.D{{Key: "_id", Value: ideaID}}}},
+		{{Key: "$lookup", Value: bson.D{
+			{Key: "from", Value: "idea_details"},
+			{Key: "let", Value: bson.D{{Key: "ideaId", Value: "$_id"}}},
+			{Key: "pipeline", Value: bson.A{
+				bson.D{{Key: "$match", Value: bson.D{{Key: "$expr", Value: bson.D{{Key: "$eq", Value: bson.A{"$idea_id", "$$ideaId"}}}}}}},
+				bson.D{{Key: "$project", Value: bson.D{
+					{Key: "_id", Value: 0},
+					{Key: "idea_id", Value: 0},
+				}}},
+			}},
+			{Key: "as", Value: "details"},
+		}}},
+		{{Key: "$unwind", Value: bson.D{
+			{Key: "path", Value: "$details"},
+			{Key: "preserveNullAndEmptyArrays", Value: true},
+		}}},
+	}
+
+	cursor, err := collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch idea", "message": err.Error()})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var results []Idea
+	if err = cursor.All(ctx, &results); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode idea", "message": err.Error()})
+		return
+	}
+
+	if len(results) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Idea not found"})
+		return
+	}
+
+	idea := results[0]
+	fmt.Printf("Fetched idea with details: %+v\n", idea)
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": idea,
 	})
 }
 

@@ -31,7 +31,7 @@ A robust backend service built with Go for managing project backlogs and tasks. 
 │   └── main.go          # Application entry point
 ├── config/             # Configuration files and management
 ├── internal/           # Private application code
-│   ├── projects/       # Project-related handlers and logic
+│   ├── ideas /       # Project-related handlers and logic
 │   └── router/         # Router setup and configuration
 ├── pkg/                # Public libraries that can be used by other projects
 │   ├── mongodbx/      # MongoDB connection and utilities
@@ -59,17 +59,20 @@ mongodb:
 ## 🚀 Getting Started
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/yourusername/backlogg-go-backend.git
    cd backlogg-go-backend
    ```
 
 2. Install dependencies:
+
    ```bash
    go mod download
    ```
 
 3. Set up your configuration:
+
    - Copy the example configuration file
    - Modify the values according to your environment
 
@@ -82,9 +85,9 @@ The server will start on port 8080 by default.
 
 ## 🔄 API Endpoints
 
-### Projects
+### Ideas
 
-- `GET /projects` - Retrieve all projects
+- `GET /ideas` - Retrieve all ideas
 - More endpoints coming soon...
 
 ## 💻 Development
@@ -109,4 +112,4 @@ Contributions, issues, and feature requests are welcome! Feel free to check the 
 
 Kuro - [@ikurotime](https://twitter.com/ikurotime)
 
-Project Link: [https://github.com/ikurotime/backlogg-go-backend](https://github.com/ikurotime/backlogg-go-backend) 
+Project Link: [https://github.com/ikurotime/backlogg-go-backend](https://github.com/ikurotime/backlogg-go-backend)

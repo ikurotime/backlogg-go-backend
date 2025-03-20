@@ -3,7 +3,6 @@ package router
 import (
 	"ikurotime/backlog-go-backend/config"
 	"ikurotime/backlog-go-backend/internal/ideas"
-	"ikurotime/backlog-go-backend/internal/projects"
 	"log"
 	"net/http"
 	"strings"
@@ -60,18 +59,11 @@ func (r *Router) setupPublicRoutes() {
 func (r *Router) setupProtectedRoutes() {
 	api := r.engine.Group("/v1")
 	{
-		// Projects routes
-		projectsGroup := api.Group("/projects")
-		{
-			handler := projects.NewHandler(r.client)
-			projectsGroup.GET("", handler.GetAll) // Public route
-		}
-
-		// Ideas routes
 		ideasGroup := api.Group("/ideas")
 		{
 			handler := ideas.NewHandler(r.client)
-			ideasGroup.GET("", handler.GetAll) // Public route
+			ideasGroup.GET("", handler.GetAll)
+			ideasGroup.GET("/:id", handler.GetOne)
 			ideasGroup.POST("/:id/like", r.requireAuth(), handler.LikeIdea)
 			ideasGroup.DELETE("/:id/like", r.requireAuth(), handler.UnlikeIdea)
 			ideasGroup.POST("/:id/bookmark", r.requireAuth(), handler.BookmarkIdea)
@@ -81,7 +73,6 @@ func (r *Router) setupProtectedRoutes() {
 	}
 }
 
-// requireAuth is a middleware that checks for authentication
 func (r *Router) requireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var sessionToken string
@@ -100,7 +91,6 @@ func (r *Router) requireAuth() gin.HandlerFunc {
 			}
 		}
 
-		// If still no token, authentication fails
 		if sessionToken == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error":   "Authentication failed",
@@ -109,7 +99,6 @@ func (r *Router) requireAuth() gin.HandlerFunc {
 			return
 		}
 
-		// Verify the token
 		claims, err := jwt.Verify(c.Request.Context(), &jwt.VerifyParams{
 			Token: sessionToken,
 		})
@@ -122,7 +111,6 @@ func (r *Router) requireAuth() gin.HandlerFunc {
 			return
 		}
 
-		// Get user details
 		usr, err := user.Get(c.Request.Context(), claims.Subject)
 		if err != nil {
 			log.Printf("Failed to get user information: %v", err)
@@ -133,7 +121,6 @@ func (r *Router) requireAuth() gin.HandlerFunc {
 			return
 		}
 
-		// Store user information in the context
 		c.Set("user_id", usr.ID)
 		c.Set("user_banned", usr.Banned)
 		c.Set("user_email", usr.EmailAddresses[0].EmailAddress)
