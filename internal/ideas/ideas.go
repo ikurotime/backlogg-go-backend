@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"ikurotime/backlog-go-backend/config"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -63,9 +64,28 @@ type Handler struct {
 
 // NewHandler creates a new ideas handler
 func NewHandler(client *mongo.Client) *Handler {
-	return &Handler{
+	handler := &Handler{
 		client: client,
 	}
+
+	// Setup indexes on initialization
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Printf("Failed to load config: %v", err)
+		return handler
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	db := client.Database(cfg.MongoDBConfig.Database)
+	if err := handler.setupIndexes(ctx, db); err != nil {
+		log.Printf("Failed to setup indexes: %v", err)
+	} else {
+		log.Print("MongoDB indexes created successfully")
+	}
+
+	return handler
 }
 
 // setupIndexes creates necessary indexes for optimal query performance
@@ -92,6 +112,13 @@ func (h *Handler) setupIndexes(ctx context.Context, db *mongo.Database) error {
 				{Key: "author_id", Value: 1},
 				{Key: "created_at", Value: -1},
 			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "title", Value: "text"},
+				{Key: "description", Value: "text"},
+			},
+			Options: options.Index().SetName("text_search"),
 		},
 	})
 	if err != nil {
@@ -159,6 +186,10 @@ func (h *Handler) GetAll(c *gin.Context) {
 	}
 	if difficulty := c.Query("difficulty"); difficulty != "" {
 		filter["difficulty"] = difficulty
+	}
+	if search := c.Query("search"); search != "" {
+		// Use text index for more efficient searching
+		filter["$text"] = bson.M{"$search": search}
 	}
 
 	// Build sort options
